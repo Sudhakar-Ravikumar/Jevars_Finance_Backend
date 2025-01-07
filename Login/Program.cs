@@ -5,11 +5,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.OpenApi.Models;
-using System;
-using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
-using System.Threading.Tasks;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -29,7 +24,7 @@ builder.Services.AddCors(options =>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo { Title = "Login API", Version = "v1" });
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "Loan API", Version = "v1" });
 });
 
 var app = builder.Build();
@@ -38,12 +33,12 @@ var app = builder.Build();
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Login API v1");
-    c.RoutePrefix = "swagger"; // Ensure Swagger UI is served at /swagger
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "Loan API v1");
+    c.RoutePrefix = "swagger";
 });
 
 app.UseHttpsRedirection();
-app.UseCors();  // Enable CORS globally
+app.UseCors(); // Enable CORS globally
 app.UseAuthorization();
 app.MapControllers();
 app.Run();
@@ -51,74 +46,101 @@ app.Run();
 public class AppDbContext : DbContext
 {
     public DbSet<User> Users { get; set; }
+    public DbSet<Customer> Customers { get; set; }
 
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Customer>().HasKey(c => c.Cus_ID); // Primary key
+    }
 }
 
-public class User
+public class Customer
 {
-    public int Id { get; set; }
-    public string Username { get; set; } = string.Empty;
-    public string PasswordHash { get; set; } = string.Empty;
+    public int Cus_ID { get; set; }
+    public string FirstName { get; set; } = string.Empty;
+    public string LastName { get; set; } = string.Empty;
+    public string FatherName { get; set; } = string.Empty;
+    public string MotherName { get; set; } = string.Empty;
+    public string MobileNo { get; set; } = string.Empty;
+    public string Address { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty;
 }
 
 [ApiController]
-[Route("api/auth")]
-public class AuthController : ControllerBase
+[Route("api/customers")]
+public class CustomersController : ControllerBase
 {
     private readonly AppDbContext _context;
 
-    public AuthController(AppDbContext context)
+    public CustomersController(AppDbContext context)
     {
         _context = context;
     }
 
-    // Register User
-    [HttpPost("register")]
-    public async Task<IActionResult> Register([FromBody] User user)
+    [HttpPost]
+    public async Task<IActionResult> CreateCustomer([FromBody] Customer customer)
     {
-        if (string.IsNullOrWhiteSpace(user.Username) || string.IsNullOrWhiteSpace(user.PasswordHash))
-        {
-            return BadRequest("Username and password are required.");
-        }
+        if (customer == null)
+            return BadRequest("Invalid customer data.");
 
-        // Check if the user already exists in the database
-        if (_context.Users.Any(u => u.Username == user.Username))
-        {
-            return BadRequest("User already exists.");
-        }
-
-        // Password Hashing using SHA256
-        using var sha256 = SHA256.Create();
-        user.PasswordHash = Convert.ToBase64String(sha256.ComputeHash(Encoding.UTF8.GetBytes(user.PasswordHash)));
-
-        // Add the user to the database
-        _context.Users.Add(user);
+        _context.Customers.Add(customer);
         await _context.SaveChangesAsync();
-
-        return Ok("User registered successfully.");
+        return CreatedAtAction(nameof(GetCustomer), new { id = customer.Cus_ID }, customer);
     }
 
-    // Login User
-    [HttpPost("login")]
-    public IActionResult Login([FromBody] User login)
+    [HttpGet("{id}")]
+    public async Task<IActionResult> GetCustomer(int id)
     {
-        if (string.IsNullOrWhiteSpace(login.Username) || string.IsNullOrWhiteSpace(login.PasswordHash))
-        {
-            return BadRequest("Username and password are required.");
-        }
+        var customer = await _context.Customers.FindAsync(id);
+        if (customer == null)
+            return NotFound(new { message = "Customer not found." });
 
-        // Hash the password provided by the user
-        using var sha256 = SHA256.Create();
-        var hash = Convert.ToBase64String(sha256.ComputeHash(Encoding.UTF8.GetBytes(login.PasswordHash)));
+        return Ok(customer);
+    }
 
-        // Look for the user in the database with the hashed password
-        var user = _context.Users.FirstOrDefault(u => u.Username == login.Username && u.PasswordHash == hash);
-        if (user == null)
-        {
-            return Unauthorized("Invalid credentials.");
-        }
+    [HttpGet]
+    public async Task<IActionResult> GetAllCustomers()
+    {
+        var customers = await _context.Customers.ToListAsync();
+        return Ok(customers);
+    }
 
-        return Ok(new { message = "Login successful", username = user.Username });
+    [HttpPut("{id}")]
+    public async Task<IActionResult> UpdateCustomer(int id, [FromBody] Customer customer)
+    {
+        if (id != customer.Cus_ID)
+            return BadRequest("Customer ID mismatch.");
+
+        var existingCustomer = await _context.Customers.FindAsync(id);
+        if (existingCustomer == null)
+            return NotFound(new { message = "Customer not found." });
+
+        existingCustomer.FirstName = customer.FirstName;
+        existingCustomer.LastName = customer.LastName;
+        existingCustomer.FatherName = customer.FatherName;
+        existingCustomer.MotherName = customer.MotherName;
+        existingCustomer.MobileNo = customer.MobileNo;
+        existingCustomer.Address = customer.Address;
+        existingCustomer.Type = customer.Type;
+
+        _context.Entry(existingCustomer).State = EntityState.Modified;
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> DeleteCustomer(int id)
+    {
+        var customer = await _context.Customers.FindAsync(id);
+        if (customer == null)
+            return NotFound(new { message = "Customer not found." });
+
+        _context.Customers.Remove(customer);
+        await _context.SaveChangesAsync();
+
+        return NoContent();
     }
 }
