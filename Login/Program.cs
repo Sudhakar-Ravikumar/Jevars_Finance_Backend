@@ -51,6 +51,8 @@ public class AppDbContext : DbContext
     public DbSet<User> Users { get; set; }
     public DbSet<Customer> Customers { get; set; }
     public DbSet<Loan> Loans { get; set; }
+    public DbSet<Entry> Entries { get; set; }
+
 
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
@@ -58,6 +60,7 @@ public class AppDbContext : DbContext
     {
         modelBuilder.Entity<Customer>().HasKey(c => c.Cus_ID); // Primary key
         modelBuilder.Entity<Loan>().HasKey(l => l.Loan_No); // Primary key
+        modelBuilder.Entity<Entry>().HasKey(e => e.Entry_ID); // Primary key
     }
 }
 
@@ -97,6 +100,19 @@ public class Loan
 }
 
 #endregion
+
+public class Entry
+{
+    public int Entry_ID { get; set; }
+    public int Loan_No { get; set; }
+    public int Cus_ID { get; set; }
+    public DateTime Pay_Date { get; set; }
+    public long Pay_Amount { get; set; }
+    public DateTime Validity { get; set; }
+    public string Pay_Type { get; set; } = "Cash";
+    public string Entry_Type { get; set; } = "Interest";
+}
+
 
 #region Controllers
 [ApiController]
@@ -309,3 +325,81 @@ public class LoansController : ControllerBase
     }
 }
 #endregion
+
+[ApiController]
+[Route("api/entries")]
+public class EntriesController : ControllerBase
+{
+    private readonly AppDbContext _context;
+
+    public EntriesController(AppDbContext context)
+    {
+        _context = context;
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> CreateEntry([FromBody] Entry entry)
+    {
+        if (entry == null)
+            return BadRequest("Invalid entry data.");
+
+        _context.Entries.Add(entry);
+        await _context.SaveChangesAsync();
+        return CreatedAtAction(nameof(GetEntry), new { id = entry.Entry_ID }, entry);
+    }
+
+    [HttpGet("{id}")]
+    public async Task<IActionResult> GetEntry(int id)
+    {
+        var entry = await _context.Entries.FindAsync(id);
+        if (entry == null)
+            return NotFound(new { message = "Entry not found." });
+
+        return Ok(entry);
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetAllEntries()
+    {
+        var entries = await _context.Entries.ToListAsync();
+        return Ok(entries);
+    }
+
+    [HttpPut("{id}")]
+    public async Task<IActionResult> UpdateEntry(int id, [FromBody] Entry entry)
+    {
+        if (id != entry.Entry_ID)
+            return BadRequest("Entry ID mismatch.");
+
+        var existingEntry = await _context.Entries.FindAsync(id);
+        if (existingEntry == null)
+            return NotFound(new { message = "Entry not found." });
+
+        existingEntry.Loan_No = entry.Loan_No;
+        existingEntry.Cus_ID = entry.Cus_ID;
+        existingEntry.Pay_Date = entry.Pay_Date;
+        existingEntry.Pay_Amount = entry.Pay_Amount;
+        existingEntry.Validity = entry.Validity;
+        existingEntry.Pay_Type = entry.Pay_Type;
+        existingEntry.Entry_Type = entry.Entry_Type;
+
+        _context.Entry(existingEntry).State = EntityState.Modified;
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> DeleteEntry(int id)
+    {
+        var entry = await _context.Entries.FindAsync(id);
+        if (entry == null)
+            return NotFound(new { message = "Entry not found." });
+
+        _context.Entries.Remove(entry);
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
+}
+
