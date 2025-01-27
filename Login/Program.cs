@@ -286,6 +286,43 @@ public class LoansController : ControllerBase
         return Ok(loans);
     }
 
+    [HttpGet("customer")] // Updated to avoid route conflict
+    public async Task<IActionResult> GetLoansByCustomer([FromQuery] int cusId)
+    {
+        if (cusId <= 0)
+            return BadRequest(new { message = "Invalid customer ID." });
+
+        var loans = await _context.Loans.Where(l => l.Cus_ID == cusId).ToListAsync();
+        if (!loans.Any())
+            return NotFound(new { message = "No loans found for the given customer." });
+
+        return Ok(loans);
+    }
+
+    [HttpGet("valid-loans")]
+    public async Task<IActionResult> GetValidLoans()
+    {
+        var currentDate = DateTime.UtcNow;
+        var validLoans = from loan in _context.Loans
+                         join customer in _context.Customers on loan.Cus_ID equals customer.Cus_ID
+                         where loan.DOB >= currentDate
+                         select new
+                         {
+                             customer.FirstName,
+                             customer.LastName,
+                             customer.Address,
+                             loan.Loan_No,
+                             loan.LoanType,
+                             loan.Amount,
+                             loan.Interest,
+                             loan.DOB,
+                             loan.Status
+                         };
+
+        return Ok(await validLoans.ToListAsync());
+    }
+
+
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateLoan(int id, [FromBody] Loan loan)
     {
@@ -362,6 +399,19 @@ public class EntriesController : ControllerBase
     public async Task<IActionResult> GetAllEntries()
     {
         var entries = await _context.Entries.ToListAsync();
+        return Ok(entries);
+    }
+
+    [HttpGet("customer")] // Updated to avoid route conflict
+    public async Task<IActionResult> GetEntriesByCustomer([FromQuery] int cusId)
+    {
+        if (cusId <= 0)
+            return BadRequest(new { message = "Invalid customer ID." });
+
+        var entries = await _context.Entries.Where(e => e.Cus_ID == cusId).ToListAsync();
+        if (!entries.Any())
+            return NotFound(new { message = "No entries found for the given customer." });
+
         return Ok(entries);
     }
 
