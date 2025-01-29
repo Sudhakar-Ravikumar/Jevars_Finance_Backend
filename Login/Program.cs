@@ -299,30 +299,6 @@ public class LoansController : ControllerBase
         return Ok(loans);
     }
 
-    [HttpGet("valid-loans")]
-    public async Task<IActionResult> GetValidLoans()
-    {
-        var currentDate = DateTime.UtcNow;
-        var validLoans = from loan in _context.Loans
-                         join customer in _context.Customers on loan.Cus_ID equals customer.Cus_ID
-                         where loan.DOB >= currentDate
-                         select new
-                         {
-                             customer.FirstName,
-                             customer.LastName,
-                             customer.Address,
-                             loan.Loan_No,
-                             loan.LoanType,
-                             loan.Amount,
-                             loan.Interest,
-                             loan.DOB,
-                             loan.Status
-                         };
-
-        return Ok(await validLoans.ToListAsync());
-    }
-
-
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateLoan(int id, [FromBody] Loan loan)
     {
@@ -451,5 +427,65 @@ public class EntriesController : ControllerBase
 
         return NoContent();
     }
+    [HttpGet("expiring-in-one-month")]
+    public async Task<IActionResult> GetLoansExpiringInOneMonth()
+    {
+        try
+        {
+            // Query to find loans expiring in one month
+            var result = await _context.Entries
+                .GroupBy(entry => entry.Loan_No)
+                .Select(group => new
+                {
+                    Loan_No = group.Key,
+                    MaxValidityDate = group.Max(e => e.Validity)
+                })
+                .Join(_context.Loans,
+                      groupedEntry => groupedEntry.Loan_No,
+                      loan => loan.Loan_No,
+                      (groupedEntry, loan) => new { groupedEntry, loan })
+                .Join(_context.Customers,
+                      joined => joined.loan.Cus_ID,
+                      customer => customer.Cus_ID,
+                      (joined, customer) => new
+                      {
+                          Loan_No = joined.groupedEntry.Loan_No,
+                          MaxValidityDate = joined.groupedEntry.MaxValidityDate,
+                          LoanDetails = new
+                          {
+                              joined.loan.Loan_No,
+                              joined.loan.Amount,
+                              joined.loan.Cus_ID,
+                              joined.loan.Status
+                          },
+                          CustomerDetails = new
+                          {
+                              customer.FirstName,
+                              customer.LastName,
+                              customer.Address
+                          }
+                      })
+                .Where(x => x.LoanDetails.Status == "Open" &&
+                            x.MaxValidityDate != null &&
+                            EF.Functions.DateDiffMonth(x.MaxValidityDate, DateTime.Now) >= 1)
+                .ToListAsync();
+
+            if (result == null || result.Count == 0)
+            {
+                return NotFound("No loans found with a Validity date difference of more than one month.");
+            }
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            // Log the exception details
+            Console.WriteLine($"Error: {ex.Message}\n{ex.StackTrace}");
+            return StatusCode(500, $"An error occurred: {ex.Message}");
+        }
+    }
+
 }
+
+
 
